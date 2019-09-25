@@ -29,6 +29,9 @@ data:
 notebook:
 	env/bin/jupyter notebook
 
+train:
+	env/bin/python training.py
+
 #
 
 clean:
