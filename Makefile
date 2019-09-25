@@ -2,7 +2,7 @@
 PYTHON=./env/bin/python
 CONDA=conda
 
-all: env
+all: env pip chemhelp
 
 setup: env pip chemhelp
 
