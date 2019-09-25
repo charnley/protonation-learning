@@ -7,7 +7,7 @@ all: env
 setup: env pip
 
 env:
-	${CONDA} env create -f environment.yml -p env
+	${CONDA} env create -f requirements.yml -p env
 
 pip: env
 	${PYTHON} -m pip install numpy
