@@ -4,7 +4,7 @@ CONDA=conda
 
 all: env
 
-setup: env pip
+setup: env pip chemhelp
 
 env:
 	${CONDA} env create -f requirements.yml -p env
@@ -12,6 +12,9 @@ env:
 pip: env
 	${PYTHON} -m pip install numpy
 	${PYTHON} -m pip install -r requirements.txt --no-cache-dir
+
+chemhelp:
+	git clone https://github.com/charnley/chemhelp
 
 jupyter-pip:
 	${PYTHON} -m pip install nglview ipywidgets
