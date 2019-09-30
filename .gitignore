@@ -1,6 +1,7 @@
 
 chemhelp/
 .pycache/
+_tmp_/
 _tmp_*
 
 # Byte-compiled / optimized / DLL files
