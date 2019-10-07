@@ -7,7 +7,7 @@ import csv
 import numpy as np
 import pandas as pd
 import qml
-from qml.kernels import get_atomic_local_kernel
+from qml.kernels import get_atomic_local_kernel, get_local_kernel
 from qml.kernels import gaussian_kernel, laplacian_kernel
 from qml.math import svd_solve
 from qml.representations import generate_fchl_acsf
@@ -22,7 +22,7 @@ from qml.kernels import kpca
 cachedir = '.pycache'
 memory = joblib.Memory(cachedir, verbose=0)
 
-np.random.seed(43)
+np.random.seed(44)
 
 def rmse(X, Y):
     """
@@ -85,6 +85,7 @@ def prepare_training_data():
 	'two_body_decay': 2.39,
         "rcut": distance_cut,
         "acut": distance_cut,
+        "elements": [1, 6, 7, 8, 12]
     }
 
     dirprefix = "../data/qmepa890/"
@@ -107,39 +108,63 @@ def prepare_training_data():
     proton_idxs = df.iloc[:,1]
     energies = df.iloc[:,2:]
 
-    representations = []
-    coord_list = []
-    atoms_list = []
+    p_representations = []
+    p_coord_list = []
+    p_atoms_list = []
 
-    for name in molecule_names:
+    n_representations = []
+    n_coord_list = []
+    n_atoms_list = []
+
+    for h_idx, name in zip(proton_idxs, molecule_names):
 
         name = str(name).zfill(4)
+
+        atoms, coord = rmsd.get_coordinates_xyz(dirprefix + "structures/" + name + ".xyz")
+        atoms = [cheminfo.convert_atom(atom) for atom in atoms]
+        n_representation = generate_fchl_acsf(atoms, coord, **parameters)
+        n_representations.append(n_representation)
+        n_coord_list.append(coord)
+        n_atoms_list.append(atoms)
+
         atoms, coord = rmsd.get_coordinates_xyz(dirprefix + "structures/" + name + "_+.xyz")
         atoms = [cheminfo.convert_atom(atom) for atom in atoms]
+        atoms[h_idx-1] = 12
+        p_representation = generate_fchl_acsf(atoms, coord, **parameters)
+        p_representations.append(n_representation)
+        p_coord_list.append(coord)
+        p_atoms_list.append(atoms)
 
-        representation = generate_fchl_acsf(atoms, coord, **parameters)
+        print(f"representing {name}")
 
-        representations.append(representation)
-
-        coord_list.append(coord)
-        atoms_list.append(atoms)
-
-    representations = np.array(representations)
     proton_idxs = np.array(proton_idxs)
 
-    print(representations.shape)
+    n_representations = np.array(n_representations)
+    p_representations = np.array(p_representations)
 
-    return coord_list, atoms_list, proton_idxs, representations, energies
+    return n_representations, p_representations, n_coord_list, p_coord_list, n_atoms_list, p_atoms_list, proton_idxs, energies
+
 
 
 def krr(kernel, properties, rcond=1e-11):
+    rcond = 1e-4
 
     alpha = svd_solve(kernel, properties, rcond=rcond)
 
     return alpha
 
 
-def get_kernel(X1, X2, charges1, charges2, sigma=1):
+def create_local_kernel(X1, X2, charges1, charges2, sigma=0.5, mode="local"):
+
+    K = qml.kernels.get_local_kernel(X1, X2,  charges1, charges2, sigma)
+
+    return K
+
+def get_kernel(X1, X2, charges1, charges2, sigma=1, mode="local"):
+    """
+
+    mode local or atomic
+    """
 
     if len(X1.shape) > 2:
 
@@ -152,7 +177,7 @@ def get_kernel(X1, X2, charges1, charges2, sigma=1):
     return K
 
 
-def check_learning(representations, atomss, properties, select_atoms=None):
+def check_learning_atom(representations, atomss, properties, select_atoms=None):
 
     properties = np.array(properties)
 
@@ -224,6 +249,91 @@ def check_learning(representations, atomss, properties, select_atoms=None):
     return
 
 
+def check_learning_mol(
+    n_representations,
+    p_representations,
+    n_atoms_list,
+    p_atoms_list,
+    properties):
+
+    properties = np.array(properties)
+
+    n_points = len(properties)
+    indexes = np.arange(n_points, dtype=int)
+    np.random.shuffle(indexes)
+
+    n_valid = 50
+    v_idxs = indexes[-n_valid:]
+    vn_repr = n_representations[v_idxs]
+    vp_repr = p_representations[v_idxs]
+    vn_atoms = [n_atoms_list[i] for i in v_idxs]
+    vp_atoms = [p_atoms_list[i] for i in v_idxs]
+    v_props = properties[v_idxs]
+
+    n_training = [2**x for x in range(1, 9)]
+    # n_training = [2**6]
+
+    for n in n_training:
+
+        t_idxs = indexes[:n]
+        t_props = properties[t_idxs]
+
+        tn_repr = n_representations[t_idxs]
+        tn_atoms = [n_atoms_list[i] for i in t_idxs]
+
+        tp_repr = p_representations[t_idxs]
+        tp_atoms = [p_atoms_list[i] for i in t_idxs]
+
+        # Train
+        tn_K = create_local_kernel(tn_repr, tn_repr, tn_atoms, tn_atoms)
+        tp_K = create_local_kernel(tp_repr, tp_repr, tp_atoms, tp_atoms)
+        # tnp_K = create_local_kernel(tn_repr, tp_repr, tn_atoms, tp_atoms)
+        # tpn_K = create_local_kernel(tp_repr, tn_repr, tp_atoms, tn_atoms)
+
+        # print(tn_K)
+        # print(tp_K)
+        # print(tnp_K)
+        # print(tpn_K)
+
+        # K_bind = tn_K + tp_K - tnp_K - tpn_K
+        K_bind = tp_K - tn_K
+
+        if True:
+
+            pca = kpca(K_bind, n=2)
+
+            # plot
+            fig, axs = plt.subplots(2, 1, figsize=(5,10))
+
+            sc = axs[0].scatter(*pca, c=t_props)
+            fig.colorbar(sc, ax=axs[0])
+
+            im = axs[1].imshow(K_bind)
+            fig.colorbar(im, ax=axs[1])
+
+            fig.savefig("_tmp_pca_{:}.png".format(n))
+
+
+        # Train model
+        t_alpha = krr(K_bind, t_props)
+
+        # Test and predict
+        vn_K = create_local_kernel(tn_repr, vn_repr, tn_atoms, vn_atoms)
+        vp_K = create_local_kernel(tp_repr, vp_repr, tp_atoms, vp_atoms)
+
+        v_K = vp_K - vn_K
+
+        p_props = np.dot(v_K, t_alpha)
+
+        # rmse error
+        p_rmse, le, ue = rmse(p_props, v_props)
+
+        print("{:5d}".format(n), "{:10.2f} ± {:4.2f}".format(p_rmse, ue))
+
+
+    return
+
+
 def overview(properties):
 
     # 0. Gas-phase energy of neutral molecule plus thermal corrections from vibrational analysis
@@ -259,7 +369,10 @@ def overview(properties):
 
 def main():
 
-    coord_list, atoms_list, proton_idxs, representations, properties = prepare_training_data()
+    n_representations, p_representations, \
+    n_coord_list, p_coord_list, \
+    n_atoms_list, p_atoms_list, \
+    proton_idxs, properties = prepare_training_data()
 
     neutral = properties.iloc[:,4]
     protonated = properties.iloc[:,5]
@@ -269,8 +382,16 @@ def main():
     protonation = protonated - neutral
     # protonation -= protonation.mean()
 
+    check_learning_mol(
+        n_representations,
+        p_representations,
+        n_atoms_list,
+        p_atoms_list,
+        protonation)
+
+
     # energies = properties.iloc[:,0]
-    check_learning(representations, atoms_list, protonation, select_atoms=proton_idxs)
+    # check_learning(representations, atoms_list, protonation, select_atoms=proton_idxs)
 
 
     return
