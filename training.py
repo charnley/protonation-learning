@@ -22,7 +22,10 @@ from qml.kernels import kpca
 cachedir = '.pycache'
 memory = joblib.Memory(cachedir, verbose=0)
 
-np.random.seed(44)
+#np.random.seed(4)
+np.random.seed(42)
+
+DEFAULT_N_TRAINING = [2**x for x in range(1, 10)]
 
 def rmse(X, Y):
     """
@@ -182,21 +185,25 @@ def prepare_training_data_qmepa890():
     # Multiplicity    2   3   4   3   3
     # Energy / Eh     −0.501036   −37.8054    −54.5438    −75.0186    −397.974
 
+    au2kcal = 627.518135759111
+
     atom_energies = {}
-    # TODO 
-
-
+    atom_energies["H"] = -0.501036 * au2kcal
+    atom_energies["C"] = -37.8054 * au2kcal
+    atom_energies["N"] = -54.5438 * au2kcal
+    atom_energies["O"] = -75.0186 * au2kcal
+    atom_energies["S"] = -397.974 * au2kcal
 
     distance_cut = 20.0
     parameters = {
         "pad": 25,
-	'nRs2': 22,
-	'nRs3': 17,
-	'eta2': 0.41,
-	'eta3': 0.97,
-	'three_body_weight': 45.83,
-	'three_body_decay': 2.39,
-	'two_body_decay': 2.39,
+        'nRs2': 22,
+        'nRs3': 17,
+        'eta2': 0.41,
+        'eta3': 0.97,
+        'three_body_weight': 45.83,
+        'three_body_decay': 2.39,
+        'two_body_decay': 2.39,
         "rcut": distance_cut,
         "acut": distance_cut,
         "elements": [1, 6, 7, 8, 12]
@@ -230,11 +237,21 @@ def prepare_training_data_qmepa890():
     n_coord_list = []
     n_atoms_list = []
 
+    atomization_list = []
+
     for h_idx, name in zip(proton_idxs, molecule_names):
 
         name = str(name).zfill(4)
+        print(f"representing {name}")
 
         atoms, coord = rmsd.get_coordinates_xyz(dirprefix + "structures/" + name + ".xyz")
+
+        atom_energy = 0
+        for atom in atoms:
+            atom_energy += atom_energies[atom]
+
+        atomization_list.append(atom_energy)
+
         atoms = [cheminfo.convert_atom(atom) for atom in atoms]
         n_representation = generate_fchl_acsf(atoms, coord, **parameters)
         n_representations.append(n_representation)
@@ -249,14 +266,15 @@ def prepare_training_data_qmepa890():
         p_coord_list.append(coord)
         p_atoms_list.append(atoms)
 
-        print(f"representing {name}")
 
     proton_idxs = np.array(proton_idxs)
 
     n_representations = np.array(n_representations)
     p_representations = np.array(p_representations)
 
-    return n_representations, p_representations, n_coord_list, p_coord_list, n_atoms_list, p_atoms_list, proton_idxs, energies
+    atomization_list = np.array(atomization_list)
+
+    return n_representations, p_representations, n_coord_list, p_coord_list, n_atoms_list, p_atoms_list, proton_idxs, energies, atomization_list
 
 
 
@@ -369,7 +387,8 @@ def check_learning_atom(representations, atomss, properties, select_atoms=None):
 def check_learning_atomization(
     representations,
     atoms_list,
-    properties):
+    properties,
+    n_training=DEFAULT_N_TRAINING):
     """
 
     check learning of atomization energy
@@ -389,8 +408,10 @@ def check_learning_atomization(
     v_props = properties[v_idxs]
 
     # n_training = [2**x for x in range(1, 5)]
-    n_training = [2**x for x in range(1, 10)]
+    # n_training = [2**x for x in range(1, 10)]
     # n_training = [2**6]
+
+    errors = []
 
     for n in n_training:
 
@@ -432,8 +453,11 @@ def check_learning_atomization(
 
         print("{:5d}".format(n), "{:10.2f} ± {:4.2f}".format(p_rmse, ue))
 
+        errors.append([p_rmse, le, ue])
 
-    return
+    errors = np.array(errors)
+
+    return errors
 
 
 def check_learning_mol(
@@ -441,7 +465,8 @@ def check_learning_mol(
     p_representations,
     n_atoms_list,
     p_atoms_list,
-    properties):
+    properties,
+    n_training=DEFAULT_N_TRAINING):
     """
 
     n_rep - neutral representations
@@ -465,8 +490,12 @@ def check_learning_mol(
     vp_atoms = [p_atoms_list[i] for i in v_idxs]
     v_props = properties[v_idxs]
 
-    n_training = [2**x for x in range(1, 10)]
-    # n_training = [2**6]
+
+    errors = []
+
+    hp = {
+        "sigma": 4
+    }
 
     for n in n_training:
 
@@ -480,8 +509,8 @@ def check_learning_mol(
         tp_atoms = [p_atoms_list[i] for i in t_idxs]
 
         # Train
-        tn_K = create_local_kernel(tn_repr, tn_repr, tn_atoms, tn_atoms)
-        tp_K = create_local_kernel(tp_repr, tp_repr, tp_atoms, tp_atoms)
+        tn_K = create_local_kernel(tn_repr, tn_repr, tn_atoms, tn_atoms, **hp)
+        tp_K = create_local_kernel(tp_repr, tp_repr, tp_atoms, tp_atoms, **hp)
         # tnp_K = create_local_kernel(tn_repr, tp_repr, tn_atoms, tp_atoms)
         # tpn_K = create_local_kernel(tp_repr, tn_repr, tp_atoms, tn_atoms)
 
@@ -510,11 +539,11 @@ def check_learning_mol(
 
 
         # Train model
-        t_alpha = krr(K_bind, t_props, solver="svd")
+        t_alpha = krr(K_bind, t_props, solver="svd", rcond=10**-4)
 
         # Test and predict
-        vn_K = create_local_kernel(tn_repr, vn_repr, tn_atoms, vn_atoms)
-        vp_K = create_local_kernel(tp_repr, vp_repr, tp_atoms, vp_atoms)
+        vn_K = create_local_kernel(tn_repr, vn_repr, tn_atoms, vn_atoms, **hp)
+        vp_K = create_local_kernel(tp_repr, vp_repr, tp_atoms, vp_atoms, **hp)
 
         v_K = vp_K - vn_K
 
@@ -525,8 +554,11 @@ def check_learning_mol(
 
         print("{:5d}".format(n), "{:10.2f} ± {:4.2f}".format(p_rmse, ue))
 
+        errors.append([p_rmse, le, ue])
 
-    return
+    errors = np.array(errors)
+
+    return errors
 
 
 def overview(properties):
@@ -583,6 +615,9 @@ def main():
     overview(properties)
 
     atomization = properties.iloc[:,6]
+    atomization = properties.iloc[:,0] - atomization_correction  # atom pbe
+    # atomization = properties.iloc[:,6] # pm6
+
     neutral = properties.iloc[:,4]
     protonated = properties.iloc[:,5]
 
@@ -597,15 +632,14 @@ def main():
     #     n_atoms_list,
     #     atomization)
     #
-    # quit()
-
-    check_learning_mol(
+    results = check_learning_mol(
         n_representations,
         p_representations,
         n_atoms_list,
         p_atoms_list,
         protonation)
 
+    np.savetxt('_tmp_learning_protonation', results)
 
     # energies = properties.iloc[:,0]
     # check_learning(representations, atoms_list, protonation, select_atoms=proton_idxs)
