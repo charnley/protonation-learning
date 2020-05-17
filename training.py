@@ -4,6 +4,7 @@ import joblib
 import rmsd
 import json
 import csv
+import tqdm
 
 import numpy as np
 import pandas as pd
@@ -27,6 +28,9 @@ memory = joblib.Memory(cachedir, verbose=0)
 np.random.seed(42)
 
 DEFAULT_N_TRAINING = [2**x for x in range(1, 10)]
+TQDM_OPTIONS = {
+    "ncols": 80,
+}
 
 def rmse(X, Y):
     """
@@ -98,6 +102,8 @@ def prepare_training_data_protonafinity():
     filename = dirprefix + "pm3_properties.csv"
     df = pd.read_csv(filename, sep=",")
 
+    n_rows = df.shape[0]
+
     # column names
     col_neuidx = "MoleculeIdx"
     col_proidx = "ProtonatedIdx"
@@ -124,11 +130,9 @@ def prepare_training_data_protonafinity():
     n_coord_list = []
     n_atoms_list = []
 
-    for idx, row in df.iterrows():
+    for idx, row in tqdm.tqdm(df.iterrows(), desc="Preparing FCHL19", total=n_rows, **TQDM_OPTIONS):
 
-        # name = str(name).zfill(4)
-
-        print(row)
+        # print(row)
 
         nidx = row[col_neuidx]
         pidx = row[col_proidx]
