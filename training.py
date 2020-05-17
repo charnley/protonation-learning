@@ -1,4 +1,5 @@
 
+import time
 import joblib
 import rmsd
 import json
@@ -63,6 +64,16 @@ def rmse(X, Y):
     ue = rmse * (np.sqrt(1 + 1.96*np.sqrt(2.0)/np.sqrt(N-1))-1)
 
     return rmse, le, ue
+
+
+def find_neighbour_hydrogens(idx, atoms, coords):
+
+    for atom, coord in zip(atoms, coord):
+
+
+        pass
+
+    return
 
 
 @memory.cache
@@ -415,6 +426,8 @@ def check_learning_atomization(
 
     for n in n_training:
 
+        start_time = time.time()
+
         t_idxs = indexes[:n]
         t_props = properties[t_idxs]
 
@@ -451,7 +464,9 @@ def check_learning_atomization(
         # rmse error
         p_rmse, le, ue = rmse(p_props, v_props)
 
-        print("{:5d}".format(n), "{:10.2f} ± {:4.2f}".format(p_rmse, ue))
+        end_time = time.time()
+
+        print("{:5d}".format(n), "{:10.2f} ± {:4.2f}     t={:4.1f}".format(p_rmse, ue, end_time-start_time))
 
         errors.append([p_rmse, le, ue])
 
@@ -498,6 +513,8 @@ def check_learning_mol(
     }
 
     for n in n_training:
+
+        start_time = time.time()
 
         t_idxs = indexes[:n]
         t_props = properties[t_idxs]
@@ -552,7 +569,9 @@ def check_learning_mol(
         # rmse error
         p_rmse, le, ue = rmse(p_props, v_props)
 
-        print("{:5d}".format(n), "{:10.2f} ± {:4.2f}".format(p_rmse, ue))
+        end_time = time.time()
+
+        print("{:5d}".format(n), "{:10.2f} ± {:4.2f}     t={:4.1f}".format(p_rmse, ue, end_time-start_time))
 
         errors.append([p_rmse, le, ue])
 
@@ -576,8 +595,8 @@ def overview(properties):
         neutral = properties.iloc[:,0]
         protonated = properties.iloc[:,1]
     except:
-        neutral = properties[:,0]
-        protonated = properties[:,1]
+        neutral = properties[0]
+        protonated = properties[1]
 
     neutral = np.array(neutral)
     protonated = np.array(protonated)
@@ -614,30 +633,39 @@ def main():
 
     overview(properties)
 
-    atomization = properties.iloc[:,6]
-    atomization = properties.iloc[:,0] - atomization_correction  # atom pbe
-    # atomization = properties.iloc[:,6] # pm6
+    try:
+        atomization = properties.iloc[:,6]
+        atomization = properties.iloc[:,0] - atomization_correction  # atom pbe
+        # atomization = properties.iloc[:,6] # pm6
 
-    neutral = properties.iloc[:,4]
-    protonated = properties.iloc[:,5]
+        neutral = properties.iloc[:,4]
+        protonated = properties.iloc[:,5]
+    except:
+        neutral = properties[0]
+        protonated = properties[1]
 
-    neutral = np.array(neutral)
-    protonated = np.array(protonated)
+    neutral = np.asarray(neutral)
+    protonated = np.asarray(protonated)
     protonation = protonated - neutral
     # protonation -= protonation.mean()
 
 
-    # results = check_learning_atomization(
-    #     n_representations,
-    #     n_atoms_list,
-    #     atomization)
-    #
+    n_training = [2**x for x in range(1, 13)]
+
+    results = check_learning_atomization(
+        n_representations,
+        n_atoms_list,
+        neutral,
+        n_training=n_training)
+
+    quit()
     results = check_learning_mol(
         n_representations,
         p_representations,
         n_atoms_list,
         p_atoms_list,
-        protonation)
+        protonation,
+        n_training=n_training)
 
     np.savetxt('_tmp_learning_protonation', results)
 
