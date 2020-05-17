@@ -94,7 +94,7 @@ def prepare_training_data_protonafinity():
         "elements": [1, 6, 7, 8, 9, 12]
     }
 
-    dirprefix = "../data/dataset-proton-affinity/data/"
+    dirprefix = "data/dataset-proton-affinity/data/"
     filename = dirprefix + "pm3_properties.csv"
     df = pd.read_csv(filename, sep=",")
 
@@ -220,7 +220,7 @@ def prepare_training_data_qmepa890():
         "elements": [1, 6, 7, 8, 12]
     }
 
-    dirprefix = "../data/qmepa890/"
+    dirprefix = "data/qmepa890/"
     filename = dirprefix + "data.csv"
 
     # 1. File ID (e.g. 0415 means the information pertains to the files `0415.xyz` and `0415_+.xyz`)
