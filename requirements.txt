@@ -1,7 +1,6 @@
 numpy
+joblib
 scipy
-ase
 rmsd
 pandas
 git+git://github.com/qmlcode/qml@develop
-jupyter

@@ -1,25 +1,22 @@
 
-import time
-import joblib
-import rmsd
-import json
 import csv
-import tqdm
+import json
+import time
 
+import joblib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import qml
-from qml.kernels import get_atomic_local_kernel, get_local_kernel
-from qml.kernels import gaussian_kernel, laplacian_kernel
-from qml.math import svd_solve, cho_solve
+import rmsd
+import tqdm
+from qml.kernels import (gaussian_kernel, get_atomic_local_kernel,
+                         get_local_kernel, kpca, laplacian_kernel)
+from qml.math import cho_solve, svd_solve
 from qml.representations import generate_fchl_acsf
+from scipy import stats
 
 from chemhelp import cheminfo
-
-from scipy import stats
-import matplotlib.pyplot as plt
-
-from qml.kernels import kpca
 
 cachedir = '.pycache'
 memory = joblib.Memory(cachedir, verbose=0)
