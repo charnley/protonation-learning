@@ -35,7 +35,7 @@ train:
 #
 
 clean:
-	rm *.pyc __pycache__ _tmp_*
+	rm -r *.pyc __pycache__ _tmp_* .pycache
 
 super-clean:
 	rm -fr data env __pycache__
