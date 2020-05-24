@@ -152,7 +152,7 @@ def prepare_training_data_protonafinity():
 
         # Find protonated atom
         smiles = row[col_prosmi]
-        molobj, status = cheminfo.smiles_to_molobj(smiles)
+        molobj = cheminfo.smiles_to_molobj(smiles)
 
         assert molobj is not None, "Molobj failed for {smiles}"
 
